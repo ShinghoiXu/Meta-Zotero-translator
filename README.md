@@ -1,4 +1,4 @@
-# Meta Store Translator for Meta Experiences
+# Meta Store Translator for Meta Store Experiences
 
 This translator is designed for [Zotero](https://www.zotero.org/), the free, open-source reference manager. It extracts citation metadata from Meta experiences pages (covering VR/AR/XR games and software) available at `https://www.meta.com/experiences/`.
 

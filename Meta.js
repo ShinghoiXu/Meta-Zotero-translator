@@ -1,5 +1,5 @@
 {
-	"translatorID": "a1f7b9e3-5c28-47d1-8e92-6b3d49c5f702",
+	"translatorID": "c8da160e-9c26-44e8-b93f-227ce88ec51d",
 	"label": "Meta Store",
 	"creator": "Chengkai Xu",
 	"target": "https://www.meta.com/experiences/",
@@ -9,7 +9,7 @@
 	"inRepository": true,
 	"translatorType": 4,
 	"browserSupport": "gcsibv",
-	"lastUpdated": "2025-03-12 16:00:00"
+	"lastUpdated": "2025-03-13 18:00:00"
 }
 
 /*
