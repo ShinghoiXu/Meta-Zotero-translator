@@ -2,29 +2,45 @@
 	"translatorID": "c8da160e-9c26-44e8-b93f-227ce88ec51d",
 	"label": "Meta Store",
 	"creator": "Chengkai Xu",
-	"target": "^https://www\\.meta\\.com/experiences/",
+	"target": "https?://(www\\.)?meta\\.com/experiences/",
 	"minVersion": "5.0",
 	"maxVersion": "",
 	"priority": 100,
 	"inRepository": true,
 	"translatorType": 4,
 	"browserSupport": "gcsibv",
-	"lastUpdated": "2025-03-28 18:00:00"
+	"lastUpdated": "2026-05-18 00:00:00"
 }
 
 /*
-	This translator extracts metadata from Meta Store experience pages for VR/AR/XR games/software.
-	It gathers:
-	  - A trimmed title (e.g. "Gorilla Tag on Meta Quest | Quest VR Games | Meta Store" becomes "Gorilla Tag"),
-	  - Description and URL from meta tags,
-	  - Developer, Publisher, Release Date, and Version via dynamic extraction by searching for an "Additional details" section.
-	    In that section, the details are grouped into containers where the first row contains the label and the second row the value.
-	    (Developer is added as a Zotero creator of type "programmer" and Publisher is saved as the Company.)
-	  - And uses JSON‑LD as a fallback for missing values.
+	Meta Store Translator — extracts citation metadata from Meta experience pages
+	(https://www.meta.com/experiences/...) for VR/AR/XR games and software.
+
+	Extracted fields:
+	  - Title:       from document.title → h1 → URL slug → JSON‑LD/meta
+	  - URL:         from the page URL
+	  - Developer:   from DOM span-scan → JSON‑LD fallback
+	  - Publisher:   from DOM span-scan → JSON‑LD fallback
+	  - Release Date: from DOM span-scan → JSON‑LD fallback
+	  - Version:     from DOM span-scan → JSON‑LD fallback
+
+	Note: Description/abstract is intentionally not extracted — Meta Store is
+	a React SPA and the Zotero Connector caches <head> metadata across
+	client-side navigations, causing cross-page leakage.
+
+	Item type:  computerProgram
+	Catalog:    Meta Store
+
+	Follows Zotero translator coding standards:
+	  - Uses attr() helper for meta tag extraction (preferred over raw querySelector)
+	  - Uses ZU.xpath() for text-based element search (valid XPath use case)
+	  - Uses ZU.cleanAuthor() for creator name parsing
+	  - Uses Z.debug() for diagnostic logging
+	  - JSON‑LD @graph is always traversed as a supplement to DOM extraction
 */
 
 function detectWeb(doc, url) {
-	if (url.match(/^https:\/\/www\.meta\.com\/experiences\//)) {
+	if (url.match(/https?:\/\/(www\.)?meta\.com\/experiences\//)) {
 		return "computerProgram";
 	}
 	return false;
@@ -35,117 +51,228 @@ function doWeb(doc, url) {
 }
 
 function scrape(doc, url) {
-	// --- Title Extraction ---
-	var metaTitleTag = doc.querySelector('meta[property="og:title"]');
-	var rawTitle = metaTitleTag ? metaTitleTag.getAttribute("content") : "";
-	var title = rawTitle;
-	// Trim title: remove suffix after " on " or " | "
-	if (title.indexOf(" on ") > -1) {
-		title = title.split(" on ")[0].trim();
-	} else if (title.indexOf(" | ") > -1) {
-		title = title.split(" | ")[0].trim();
+	// --- Phase 0: Parse JSON‑LD once ---
+	// JSON‑LD lives in <head> and may be stale during SPA client-side
+	// navigations.  It is still useful as a supplementary source for fields
+	// that DOM extraction misses, and it is correct on direct page visits.
+	var ldData = null;
+	var ldGraph = [];
+	var ldJson = doc.querySelector('script[type="application/ld+json"]');
+	if (ldJson) {
+		try {
+			ldData = JSON.parse(ldJson.textContent);
+			ldGraph = ldData["@graph"] || [];
+		} catch(e) {
+			Z.debug("Meta Store: JSON‑LD parse error — " + e.message);
+		}
 	}
 
-	// --- Description ---
-	var metaDescTag = doc.querySelector('meta[name="description"]');
-	var description = metaDescTag ? metaDescTag.getAttribute("content") : "";
+	// --- Title Extraction ---
+	// Priority: document.title → h1 → URL slug → JSON‑LD/meta
+	// document.title is the ONLY source that stays current during React SPA
+	// client-side navigations.  JSON‑LD lives in <head> and is cached by the
+	// Zotero Connector across route changes; h1 lives in <body> and is fresh.
+
+	// Helper: capitalise each word of a slug ("gorilla-tag" → "Gorilla Tag")
+	function slugToTitle(slug) {
+		return slug.replace(/-/g, ' ').replace(/\b\w/g, function(ch) {
+			return ch.toUpperCase();
+		});
+	}
+
+	var title = "";
+
+	// 1. document.title — always current (React updates <title> on every route)
+	var dt = doc.title || "";
+	if (dt) {
+		// "Gorilla Tag on Meta Quest | Quest VR Games | Meta Store" → "Gorilla Tag"
+		var pipeIdx = dt.indexOf(" | ");
+		if (pipeIdx > -1) {
+			dt = dt.substring(0, pipeIdx);
+		}
+		var onIdx = dt.indexOf(" on ");
+		if (onIdx > -1) {
+			dt = dt.substring(0, onIdx);
+		}
+		title = dt.trim();
+	}
+
+	// 2. h1 heading — visible title in the page body
+	if (!title) {
+		var h1 = doc.querySelector("h1");
+		if (h1) title = h1.textContent.trim();
+	}
+
+	// 3. URL slug — always reliable, but loses original casing
+	if (!title) {
+		var m = url.match(/\/experiences\/([^/]+)\//);
+		if (m) title = slugToTitle(m[1]);
+	}
+
+	// 4. og:title meta / JSON‑LD (may be stale on SPA, last resort)
+	if (!title) {
+		title = attr(doc, 'meta[property="og:title"]', 'content')
+			|| attr(doc, 'meta[name="og:title"]', 'content') || "";
+		if (!title && ldGraph.length) {
+			for (var gi = 0; gi < ldGraph.length; gi++) {
+				var tnode = ldGraph[gi];
+				var ttype = tnode["@type"];
+				var isIP = (ttype === "ItemPage") ||
+					(Array.isArray(ttype) && ttype.indexOf("ItemPage") !== -1);
+				if (isIP && tnode.name) {
+					title = tnode.name;
+					break;
+				}
+			}
+		}
+		if (title.indexOf(" on ") > -1) {
+			title = title.split(" on ")[0].trim();
+		} else if (title.indexOf(" | ") > -1) {
+			title = title.split(" | ")[0].trim();
+		}
+	}
+
+	Z.debug("Meta Store: title = " + title);
 
 	// --- Create Item ---
 	var item = new Z.Item("computerProgram");
 	item.title = title;
-	Zotero.debug("Title: " + title);
-	item.abstractNote = description;
 	item.url = url;
 	item.libraryCatalog = "Meta Store";
 
-	// --- Title Extraction ---
-	var metaTitleTag = doc.querySelector('meta[property="og:title"]') || doc.querySelector('meta[name="og:title"]');
-	var rawTitle = "";
-	if (metaTitleTag) {
-		rawTitle = metaTitleTag.getAttribute("content");
-	}
-	// Fallback: use document.title if rawTitle is empty
-	if (!rawTitle) {
-		rawTitle = doc.title || "";
-	}
-	// Fallback: try JSON‑LD if still empty
-	if (!rawTitle) {
-		var ldJson = doc.querySelector('script[type="application/ld+json"]');
-		if (ldJson) {
-			try {
-				var ldData = JSON.parse(ldJson.textContent);
-				if (ldData.name) {
-					rawTitle = ldData.name;
-				}
-			} catch(e) {
-				// JSON parse error; do nothing
-			}
+
+	// --- Metadata extraction ---
+	// Strategy: hunt for known label <span> elements anywhere in the page.
+	// For each found label, walk up to the row container (DIV.x78zum5 with 2 children
+	// of class x193iq5w) and read the value from the sibling cell.
+	// This approach avoids brittle XPath section detection and is tolerant of
+	// Meta's frequent CSS class changes (x78zum5 / x193iq5w are stable flex layout atoms).
+
+	var fieldMap = {
+		"developer":      { type: "creator", creatorType: "programmer" },
+		"publisher":      { type: "company" },
+		"release date":   { type: "date" },
+		"version":        { type: "version" }
+	};
+
+	var allSpans = doc.querySelectorAll("span");
+	var processedLabels = {};
+
+	for (var si = 0; si < allSpans.length; si++) {
+		var spanText = allSpans[si].textContent.trim();
+		var labelKey = spanText.toLowerCase();
+		var mapping = fieldMap[labelKey];
+		if (!mapping || processedLabels[labelKey]) continue;
+		processedLabels[labelKey] = true;
+
+		// Walk up from <span> to find the row: SPAN → DIV.xeuugli → DIV.x193iq5w → DIV.x78zum5 (row)
+		var cell = allSpans[si].parentElement;       // DIV.xeuugli
+		if (!cell) continue;
+		cell = cell.parentElement;                    // DIV.x193iq5w (label cell)
+		if (!cell) continue;
+		var row = cell.parentElement;                 // DIV.x78zum5 (row)
+		if (!row || row.children.length < 2) continue;
+
+		// The value is in the second child DIV.x193iq5w of the row
+		var valueCell = row.children[1];
+		if (!valueCell) continue;
+		var value = valueCell.textContent.trim();
+		if (!value || value.toLowerCase() === labelKey) continue; // skip if value equals label (row misidentified)
+
+		Z.debug("Meta Store: DOM — " + labelKey + " = " + value);
+
+		switch (mapping.type) {
+			case "creator":
+				item.creators.push(ZU.cleanAuthor(value, mapping.creatorType, true));
+				break;
+			case "company":
+				item.company = value;
+				break;
+			case "date":
+				item.date = value;
+				break;
+			case "version":
+				item.version = value;
+				break;
 		}
 	}
 
-	var title = rawTitle;
-	// Trim title: remove suffix after " on " or " | " if present
-	if (title.indexOf(" on ") > -1) {
-		title = title.split(" on ")[0].trim();
-	} else if (title.indexOf(" | ") > -1) {
-		title = title.split(" | ")[0].trim();
-	}
+	// --- JSON‑LD supplement ---
+	// Reuse ldGraph from Phase 0.  Build an @id → node lookup, then resolve
+	// SoftwareApplication → creator/publisher references to get organization names.
+	// Also checks for releaseDate/version as fallback (though these are DOM‑only on current pages).
 
-	// Set the title in the item
-	item.title = title;
+	if (ldGraph.length) {
+		// Build @id → node lookup for resolving references
+		var idMap = {};
+		for (var gk = 0; gk < ldGraph.length; gk++) {
+			var refNode = ldGraph[gk];
+			if (refNode["@id"]) {
+				idMap[refNode["@id"]] = refNode;
+			}
+		}
 
+		// Helper: resolve an @id reference or inline object to its name
+		var resolveName = function(ref) {
+			if (!ref) return null;
+			if (ref.name) return ref.name;
+			if (ref["@id"]) {
+				var resolved = idMap[ref["@id"]];
+				return resolved ? resolved.name : null;
+			}
+			return null;
+		};
 
-	// --- Additional details extraction ---
-	// First, try to locate the header with text "Additional details"
-	var detailsHeader = ZU.xpath(doc, "//div[contains(text(), 'Additional details')]");
-	if (detailsHeader.length) {
-		// Assume the container immediately following the header holds the details
-		var detailsContainer = detailsHeader[0].nextElementSibling;
-		if (detailsContainer) {
-			// The details are grouped into containers (each group has two rows: label then value)
-			// We select each group by a common class pattern (here we assume the outer groups have class "x78zum5")
-			var detailGroups = detailsContainer.querySelectorAll("div.x78zum5");
-			for (let group of detailGroups) {
-				// Within each group, get the first and last child that contain the label and value respectively
-				let labelElem = group.querySelector("div.x193iq5w:first-child span");
-				let valueElem = group.querySelector("div.x193iq5w:last-child span");
-				if (!labelElem || !valueElem) continue;
-				let label = labelElem.textContent.trim().toLowerCase();
-				let value = valueElem.textContent.trim();
-				// Process based on label
-				if (label === "developer") {
-					item.creators.push(ZU.cleanAuthor(value, "programmer", true));
-				} else if (label.indexOf("publisher") !== -1) {
-					item.company = value;
-				} else if (label.indexOf("release date") !== -1) {
-					item.date = value;
-				} else if (label.indexOf("version") !== -1) {
-					item.version = value;
+		// Find the main entity node (SoftwareApplication / VideoGame / Product)
+		for (var gl = 0; gl < ldGraph.length; gl++) {
+			var appNode = ldGraph[gl];
+			var appType = appNode["@type"];
+			var types = Array.isArray(appType) ? appType : [appType];
+			var isApp = types.indexOf("SoftwareApplication") !== -1
+				|| types.indexOf("VideoGame") !== -1;
+
+			if (isApp) {
+				// Developer / creator
+				if (!item.creators.length) {
+					var devName = resolveName(appNode.creator) || resolveName(appNode.author);
+					if (devName) {
+						item.creators.push(ZU.cleanAuthor(devName, "programmer", true));
+						Z.debug("Meta Store: JSON‑LD — creator = " + devName);
+					}
 				}
+
+				// Publisher
+				if (!item.company) {
+					var pubName = resolveName(appNode.publisher);
+					if (pubName) {
+						item.company = pubName;
+						Z.debug("Meta Store: JSON‑LD — publisher = " + pubName);
+					}
+				}
+
+				// Release date (not always present in JSON‑LD; DOM takes priority)
+				if (!item.date) {
+					var dateVal = appNode.releaseDate || appNode.datePublished;
+					if (dateVal) {
+						item.date = dateVal;
+						Z.debug("Meta Store: JSON‑LD — date = " + dateVal);
+					}
+				}
+
+				// Version
+				if (!item.version) {
+					var verVal = appNode.version || appNode.softwareVersion;
+					if (verVal) {
+						item.version = verVal;
+						Z.debug("Meta Store: JSON‑LD — version = " + verVal);
+					}
+				}
+
+				break; // only one main entity expected
 			}
 		}
 	} else {
-		// --- Fallback: JSON‑LD ---
-		var ldJson = doc.querySelector('script[type="application/ld+json"]');
-		if (ldJson) {
-			try {
-				var ldData = JSON.parse(ldJson.textContent);
-				if (ldData.creator && ldData.creator.name) {
-					item.creators.push(ZU.cleanAuthor(ldData.creator.name, "programmer", true));
-				}
-				if (ldData.publisher && ldData.publisher.name) {
-					item.company = ldData.publisher.name;
-				}
-				if (ldData.releaseDate) {
-					item.date = ldData.releaseDate;
-				}
-				if (ldData.version) {
-					item.version = ldData.version;
-				}
-			} catch(e) {
-				// JSON parse error; do nothing
-			}
-		}
+		Z.debug("Meta Store: no JSON‑LD found on page");
 	}
 
 
@@ -167,13 +294,13 @@ var testCases = [
 				"title": "Gorilla Tag",
 				"creators": [
 					{
-						"lastName": "Example Developer Name",
+						"lastName": "Another Axiom Inc",
 						"creatorType": "programmer"
 					}
 				],
-				"date": "Example Release Date",
-				"abstractNote": "Run, jump, and climb using only your hands. Play with friends in a virtual gorilla world …",
-				"company": "Example Publisher Name",
+				"date": "December 15, 2022",
+				"company": "Another Axiom",
+				"version": "1.1.137",
 				"libraryCatalog": "Meta Store",
 				"url": "https://www.meta.com/experiences/gorilla-tag/4979055762136823/"
 			}
@@ -188,16 +315,38 @@ var testCases = [
 				"title": "Wall Town Wonders",
 				"creators": [
 					{
-						"lastName": "Example Developer Name",
+						"lastName": "Cyborn BVBA",
 						"creatorType": "programmer"
 					}
 				],
-				"date": "Example Release Date",
-				"abstractNote": "Wall town wonders is a Mixed reality cozy life sim city builder …",
-				"company": "Example Publisher Name",
+				"date": "November 21, 2024",
+				"company": "Cyborn BV",
+				"version": "1.10",
 				"libraryCatalog": "Meta Store",
 				"url": "https://www.meta.com/experiences/wall-town-wonders/6103056399797843/"
 			}
 		]
+	},
+	{
+		"type": "web",
+		"url": "https://www.meta.com/experiences/i-am-cat/6061406827268889/",
+		"items": [
+			{
+				"itemType": "computerProgram",
+				"title": "I Am Cat",
+				"creators": [
+					{
+						"lastName": "NEW FOLDER GAMES LTD",
+						"creatorType": "programmer"
+					}
+				],
+				"date": "December 5, 2024",
+				"abstractNote": "Singleplayer",
+				"version": "1.4.0.0",
+				"libraryCatalog": "Meta Store",
+				"url": "https://www.meta.com/experiences/i-am-cat/6061406827268889/"
+			}
+		]
 	}
 ];
+/** END TEST CASES **/

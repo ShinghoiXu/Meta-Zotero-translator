@@ -1,109 +1,131 @@
-# Meta Store Translator for Meta Store Experiences
+[English](README.md) | [简体中文](README.zh-CN.md)
 
-This translator is designed for [Zotero](https://www.zotero.org/), the free, open-source reference manager. It extracts citation metadata from Meta experiences pages (covering VR/AR/XR games and software) available at `https://www.meta.com/experiences/`.
+# Meta Store Translator for Zotero
 
-The translator gathers key details such as a trimmed title, description, URL, developer, release date, version, and publisher. It uses a combination of static meta tag extraction, dynamic keyword-based searches, and fallback parsing of JSON-LD data to build a comprehensive citation record.
+A [Zotero](https://www.zotero.org/) web translator that extracts citation metadata from **Meta experience pages** — VR/AR/XR games and software listed at [`https://www.meta.com/experiences/`](https://www.meta.com/experiences/).
+
+When you visit a Meta Store product page, the Zotero Connector icon will light up with a "computerProgram" item. One click saves all the key metadata.
 
 ---
 
-## Features
+## What It Extracts
 
-- **Title Extraction:**  
-  The translator retrieves the full title from the `og:title` meta tag or document title and trims it by removing any trailing text (e.g., text after " on"). 
+| Field | Source |
+|---|---|
+| **Title** | `document.title` → `h1` → URL slug → JSON‑LD/meta fallback |
+| **URL** | Current page URL |
+| **Developer** | DOM span-scan → JSON‑LD fallback |
+| **Publisher** | DOM span-scan → JSON‑LD fallback |
+| **Release Date** | DOM span-scan → JSON‑LD fallback |
+| **Version** | DOM span-scan → JSON‑LD fallback |
 
-- **Description & URL:**  
-  It extracts the page description from the `og:description` or standard description meta tag, and uses the `og:url` tag (or falls back to the current URL) for accurate citation linking.
-
-- **Dynamic Data Extraction:**  
-  - **Developer:** Searches the document using XPath for a keyword match (e.g. "developer") and captures the following sibling element’s text.
-  - **Release Date:** Similarly, it dynamically locates and extracts the release date.
-  - **Version:** Uses a keyword search to extract the version information.
-
-- **Fallback via JSON-LD:**  
-  If certain fields (such as publisher, release date, or developer) are not found dynamically, the translator falls back to parsing JSON-LD data. It also cleans the publisher’s name by removing any trailing " Inc" if present.
-
-- **Item Type:**  
-  The translator sets the item type as "computerProgram" to match Zotero's software entry requirements.
-
-- **Library Catalog:**  
-  The record is marked with a library catalog value of `"meta.com"`.
+- **Item Type:** `computerProgram`
+- **Library Catalog:** `Meta Store`
+- Title is trimmed — `"Gorilla Tag on Meta Quest | Quest VR Games"` becomes `"Gorilla Tag"`.
+- **Description/abstract is intentionally omitted** — Zotero Connector caches `<head>` metadata across SPA navigations, which would cause cross-page leakage.
 
 ---
 
 ## Supported URLs
 
-The translator is activated on Meta experiences pages. It detects a valid page if the URL includes `/experiences/`.
+Any URL matching `https?://(www.)?meta.com/experiences/*`, for example:
+
+- `https://www.meta.com/experiences/gorilla-tag/4979055762136823/`
+- `https://www.meta.com/experiences/wall-town-wonders/6103056399797843/`
+- `https://www.meta.com/experiences/i-am-cat/6061406827268889/`
 
 ---
 
 ## Installation
 
-1. **Download the Translator:**  
-   Save the `Meta.js` file on your computer.
-
-2. **Locate Zotero Translators Folder:**  
-   In Zotero, navigate to **Edit > Preferences > Advanced > Files and Folders** and click **Show Data Directory**. Open the `translators` folder.
-
-3. **Copy the File:**  
-   Paste the `Meta.js` file into the `translators` folder.
-
-4. **Update Translators:**  
-   In your browser, right-click the Zotero Connector icon, select **Options** (or **Manage Extension/Options**), navigate to **Advanced > Translators**, and click **Update Translators**. This will refresh your list to include the new Meta Store translator.
+1. **Download** the [`Meta Store.js`](Meta%20Store.js) file.
+2. In Zotero, go to **Edit → Preferences → Advanced → Files and Folders** and click **Show Data Directory**.
+3. Open the `translators` folder and place `Meta Store.js` inside.
+4. In your browser, right-click the Zotero Connector icon → **Options** → **Advanced → Translators** → click **Update Translators**.
 
 ---
 
 ## How It Works
 
-When you visit a Meta experiences page (e.g., `https://www.meta.com/experiences/gorilla-tag/4979055762136823/`), the Zotero Connector icon will indicate that a computer program item is available. Clicking the icon will automatically extract the metadata, including:
+```
+detectWeb()  →  URL matches /experiences/ ?  "computerProgram" : false
 
-- **Title:** Trimmed from the `og:title` meta tag or document title.
-- **Abstract/Description:** Pulled from the description meta tags.
-- **URL:** From the `og:url` meta tag (or the current page URL).
-- **Developer, Release Date & Version:** Dynamically extracted via XPath searches.
-- **Publisher:** Retrieved from JSON-LD data (with any trailing " Inc" removed).
+doWeb()  →  scrape(doc, url)
 
-The translator then creates a complete citation record for the experience.
+scrape():
+  1. Title       — document.title (always current on SPA)
+                   → trim " on " / " | " suffixes
+                   ↓ h1 element
+                   ↓ URL slug → capitalise words
+                   ↓ JSON‑LD / og:title meta (last resort)
 
----
+  2. Details     — querySelectorAll("span")
+                   → match known labels (Developer, Publisher, …)
+                   → walk up DOM to find row container
+                      → developer / publisher / release date / version
 
-## Sample Test Cases
+  4. JSON‑LD     — IdMap lookup for @id references
+                   → supplement any unfilled fields
+```
 
-Here are two examples of how the translator processes pages:
-
-- **Gorilla Tag:**  
-  - **Title:** Gorilla Tag  
-  - **Developer:** Extracted dynamically (or via JSON-LD fallback)  
-  - **Release Date:** e.g., "Jan 30, 2025 at 7:50 AM"  
-  - **Version:** e.g., "v1.2.3"  
-  - **Publisher:** e.g., "Another Axiom" (cleaned from "Another Axiom Inc")  
-  - **URL:** Direct link to the Gorilla Tag page
-
-- **Wall Town Wonders:**  
-  - **Title:** Wall Town Wonders  
-  - **Developer:** Extracted dynamically  
-  - **Release Date:** e.g., "Feb 15, 2025"  
-  - **Version:** e.g., "v2.0"  
-  - **Publisher:** Retrieved from JSON-LD data  
-  - **URL:** Direct link to the Wall Town Wonders page
-
-For more details, refer to the test cases embedded within the translator code.
+The translator follows [Zotero's coding standards](
+Note: The translator intentionally does not extract the description/abstract because Meta Store is a React SPA — cached `<head>` metadata (JSON‑LD descriptions, `<meta>` tags) can leak across page navigations when using the Zotero Connector.- Uses `attr()` helper for meta-tag extraction (preferred over raw querySelector)
+- Uses `ZU.cleanAuthor()` for creator name parsing
+- Uses `Z.debug()` for diagnostic logging
+- JSON‑LD `@graph` is always traversed as a supplement to DOM extraction
 
 ---
 
-## Troubleshooting & Notes
+## Real Test Data (as of 2026-05-18)
 
-- **Dynamic Extraction:**  
-  The translator uses case-insensitive XPath queries to locate keywords like "developer", "release date", and "version". If the page structure changes, these extractions might require adjustments.
+### Gorilla Tag
 
-- **Fallback Mechanism:**  
-  When dynamic extraction fails, JSON-LD parsing provides a backup to ensure key fields are still captured.
+| Field | Value |
+|---|---|
+| Title | Gorilla Tag |
+| Developer | Another Axiom Inc |
+| Publisher | Another Axiom |
+| Release Date | December 15, 2022 |
+| Version | 1.1.137 |
+| URL | `https://www.meta.com/experiences/gorilla-tag/4979055762136823/` |
 
-- **Compatibility:**  
-  The translator requires Zotero version 5.0 or above.
+### Wall Town Wonders
 
-- **Feedback:**  
-  If you encounter any issues or have suggestions, please report them on the Zotero Translators repository.
+| Field | Value |
+|---|---|
+| Title | Wall Town Wonders |
+| Developer | Cyborn BVBA |
+| Publisher | Cyborn BV |
+| Release Date | November 21, 2024 |
+| Version | 1.10 |
+| URL | `https://www.meta.com/experiences/wall-town-wonders/6103056399797843/` |
+
+### I Am Cat
+
+| Field | Value |
+|---|---|
+| Title | I Am Cat |
+| Developer | NEW FOLDER GAMES LTD |
+| Publisher | NEW FOLDER GAMES LTD |
+| Release Date | December 5, 2024 |
+| Version | 1.4.0.0 |
+| URL | `https://www.meta.com/experiences/i-am-cat/6061406827268889/` |
 
 ---
 
-This translator is maintained by Chengkai Xu and last updated on March 12, 2025. Enjoy citing your Meta experiences seamlessly!
+## Troubleshooting
+
+- **Title is from the previous page?** This is a known Zotero Connector SPA caching issue. The translator now uses `document.title` (updated by React on every route) as the primary title source instead of cached `<head>` metadata. If the problem persists, ensure you have the latest version of this translator. As a workaround, you can copy the URL and open it in a new browser tab — the Connector will then see a fresh page load with correct metadata.
+- **Details not extracted?** Meta may have changed their page layout. The translator scans all `<span>` elements for known labels (Developer, Publisher, etc.) and walks up the DOM to find corresponding values. If Meta changes label text or row structure, the extraction logic may need updating.
+- **Debugging:** Open Zotero's debug output (Help → Debug Output Logging) and look for lines starting with `Meta Store:`.
+
+---
+
+## Compatibility
+
+- Zotero 5.0 or above
+- Browser connector with translator support (Chrome, Firefox, Edge, Safari)
+
+---
+
+Maintained by **Chengkai Xu**. Last updated: 2026-05-18.
