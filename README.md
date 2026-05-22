@@ -128,4 +128,12 @@ Note: The translator intentionally does not extract the description/abstract bec
 
 ---
 
-Maintained by **Chengkai Xu**. Last updated: 2026-05-18.
+## References
+
+Gualeni, Stefano, Riccardo Fassone, and Jonas Linderoth. 'How to Reference a Digital Game'. In *Proceedings of DiGRA 2019: Game, Play and the Emerging Ludo-Mix*, 17. Kyoto: DiGRA, 2019. <http://www.digra.org/digital-library/publications/how-to-reference-a-digital-game/>.
+
+Kaltman, Eric, Stacey Mason, and Noah Wardrip-Fruin. 'The Game I Mean: Game Reference, Citation and Authoritative Access'. *Game Studies* 21, no. 3 (September 2021). <https://gamestudies.org/2103/articles/kaltman_mason_wardripfruin>.
+
+---
+
+Maintained by **Chengkai Xu**. Last updated: 2026-05-22.
