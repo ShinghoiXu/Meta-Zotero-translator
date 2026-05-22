@@ -13,6 +13,29 @@
 }
 
 /*
+	***** BEGIN LICENSE BLOCK *****
+
+	Copyright © 2026 Chengkai Xu
+
+	This file is part of Zotero.
+
+	Zotero is free software: you can redistribute it and/or modify
+	it under the terms of the GNU Affero General Public License as published by
+	the Free Software Foundation, either version 3 of the License, or
+	(at your option) any later version.
+
+	Zotero is distributed in the hope that it will be useful,
+	but WITHOUT ANY WARRANTY; without even the implied warranty of
+	MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+	GNU Affero General Public License for more details.
+
+	You should have received a copy of the GNU Affero General Public License
+	along with Zotero. If not, see <http://www.gnu.org/licenses/>.
+
+	***** END LICENSE BLOCK *****
+*/
+
+/*
 	Meta Store Translator — extracts citation metadata from Meta experience pages
 	(https://www.meta.com/experiences/...) for VR/AR/XR games and software.
 
@@ -33,7 +56,6 @@
 
 	Follows Zotero translator coding standards:
 	  - Uses attr() helper for meta tag extraction (preferred over raw querySelector)
-	  - Uses ZU.xpath() for text-based element search (valid XPath use case)
 	  - Uses ZU.cleanAuthor() for creator name parsing
 	  - Uses Z.debug() for diagnostic logging
 	  - JSON‑LD @graph is always traversed as a supplement to DOM extraction
@@ -100,7 +122,7 @@ function scrape(doc, url) {
 	// 2. h1 heading — visible title in the page body
 	if (!title) {
 		var h1 = doc.querySelector("h1");
-		if (h1) title = h1.textContent.trim();
+		if (h1) title = ZU.trimInternal(h1.textContent);
 	}
 
 	// 3. URL slug — always reliable, but loses original casing
@@ -159,7 +181,7 @@ function scrape(doc, url) {
 	var processedLabels = {};
 
 	for (var si = 0; si < allSpans.length; si++) {
-		var spanText = allSpans[si].textContent.trim();
+		var spanText = ZU.trimInternal(allSpans[si].textContent);
 		var labelKey = spanText.toLowerCase();
 		var mapping = fieldMap[labelKey];
 		if (!mapping || processedLabels[labelKey]) continue;
@@ -176,7 +198,7 @@ function scrape(doc, url) {
 		// The value is in the second child DIV.x193iq5w of the row
 		var valueCell = row.children[1];
 		if (!valueCell) continue;
-		var value = valueCell.textContent.trim();
+		var value = ZU.trimInternal(valueCell.textContent);
 		if (!value || value.toLowerCase() === labelKey) continue; // skip if value equals label (row misidentified)
 
 		Z.debug("Meta Store: DOM — " + labelKey + " = " + value);
@@ -275,11 +297,6 @@ function scrape(doc, url) {
 		Z.debug("Meta Store: no JSON‑LD found on page");
 	}
 
-
-
-
-
-
 	item.complete();
 }
 
@@ -341,7 +358,6 @@ var testCases = [
 					}
 				],
 				"date": "December 5, 2024",
-				"abstractNote": "Singleplayer",
 				"version": "1.4.0.0",
 				"libraryCatalog": "Meta Store",
 				"url": "https://www.meta.com/experiences/i-am-cat/6061406827268889/"
