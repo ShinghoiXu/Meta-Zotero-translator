@@ -16,7 +16,8 @@
 	***** BEGIN LICENSE BLOCK *****
 
 	Copyright © 2026 Chengkai Xu
-
+	https://github.com/ShinghoiXu/Meta-Zotero-translator
+	
 	This file is part of Zotero.
 
 	Zotero is free software: you can redistribute it and/or modify
